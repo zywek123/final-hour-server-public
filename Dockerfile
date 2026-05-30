@@ -13,6 +13,8 @@ WORKDIR /home/node
 ENTRYPOINT ["npm", "run"]
 CMD ["dev"]
 
+RUN apt-get update && apt-get install -y python3-setuptools && rm -rf /var/lib/apt/lists/*
+
 RUN --mount=type=bind,source=package.json,target=/home/node/package.json \
     --mount=type=bind,source=package-lock.json,target=/home/node/package-lock.json \
     npm ci
