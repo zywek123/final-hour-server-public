@@ -10,6 +10,5 @@ export default {
     channel_weapons: 7,
     channel_server_sounds: 8,
     CHANNEL_VOICECHAT: 20,
-    //DISCORD_TOKEN:
-    //"discord app secret goes here",
+    DISCORD_TOKEN: "",
 };

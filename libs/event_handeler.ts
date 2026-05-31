@@ -321,9 +321,9 @@ export default class Event_handeler {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
             if (player.user.muted) return;
-            var exclude = [];
+            var exclude = [player.name];
             for (let i of player.user.block_list) exclude.push(i);
-            player.map.send(player.voice_channel, "n/a", data, exclude);
+player.map.send(player.voice_channel, "n/a", data, exclude);
         },
         async chat(peer, data) {
             var player = this.server.get_by_peer(peer);
