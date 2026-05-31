@@ -15,6 +15,7 @@ import DoublePointsPowerup from "./powerups/double_points";
 import InstakillPowerup from "./powerups/instakill";
 import TickExecutor from "./tick_executor";
 import NukePowerUp from "./powerups/nuke";
+import Timer from "./timer";
 export default class Zomby_game extends game {
     round_sounds_path: string;
     possible_powerups: (typeof Powerup)[] = [
@@ -35,6 +36,10 @@ export default class Zomby_game extends game {
     double_points: boolean = false;
     instakill: boolean = false;
     protected tickExecutor: TickExecutor;
+    spawn_clock: Timer = new Timer();
+    get spawn_interval(): number {
+        return Math.max(1500, 5000 - (this.round - 1) * 300);
+    }
     constructor(server: Server, owner: Player, name: string, map: WorldMap) {
         super(server, owner, name, map);
         this.zomby_game = true;
@@ -185,7 +190,10 @@ export default class Zomby_game extends game {
             await this.next_round();
         }
         if (this.current_zombies < this.max_zombies && this.total_zombies > 0) {
-            return this.spawn_zomby();
+            if (this.spawn_clock.elapsed >= this.spawn_interval) {
+                this.spawn_clock.restart();
+                return this.spawn_zomby();
+            }
         }
     }
     spawn_zomby(): void {

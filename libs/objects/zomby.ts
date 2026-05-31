@@ -35,6 +35,9 @@ export default class Zomby extends entity {
     tracking?: Tracker;
     sound_path: string;
     cry_timer: timer;
+    stuck_timer: timer;
+    stuck_last_x: number;
+    stuck_last_y: number;
     constructor(
         server: Server,
         map: WorldMap,
@@ -71,7 +74,7 @@ export default class Zomby extends entity {
         this.dead = false;
         this.attack_timer = new timer();
         this.check_timer = new timer();
-        this.movement_time = random.random_number(260, 360);
+        this.movement_time = random.random_number(600, 900);
         this.range = 1;
         this.attack_time = random.random_number(950, 2500);
         this.check_time = 13000;
@@ -79,6 +82,9 @@ export default class Zomby extends entity {
         this.tracking = undefined;
         this.sound_path = "entities/zomby";
         this.cry_timer = new timer();
+        this.stuck_timer = new timer();
+        this.stuck_last_x = x;
+        this.stuck_last_y = y;
     }
     cry(): void {
         this.play_sound(
@@ -229,11 +235,32 @@ export default class Zomby extends entity {
             this.cry_timer.restart();
             this.cry();
         }
+        if (this.stuck_timer.elapsed >= 20000) {
+            this.stuck_timer.restart();
+            if (
+                this.tracking &&
+                !this.tracking.reversed &&
+                Math.abs(this.x - this.stuck_last_x) < 1 &&
+                Math.abs(this.y - this.stuck_last_y) < 1
+            ) {
+                this.tracking.destroy();
+                this.tracking = undefined;
+                this.check_timer.restart();
+                await this.find_target();
+                return;
+            }
+            this.stuck_last_x = this.x;
+            this.stuck_last_y = this.y;
+        }
         if (
             this.first ||
             (this.check_timer.elapsed >= this.check_time &&
                 this.tracking &&
                 this.tracking.reversed) ||
+            (this.check_timer.elapsed >= this.check_time &&
+                this.tracking &&
+                !this.tracking.reversed &&
+                this.tracking.at_end()) ||
             (this.check_timer.elapsed >= this.check_time && !this.tracking)
         ) {
             this.first = false;
