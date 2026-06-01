@@ -10,6 +10,8 @@ services:
             - ./database.sqlite3:/home/node/app/database.sqlite3
             - ./maps:/home/node/app/maps
             - ./sm.txt:/home/node/app/sm.txt
+            - ./contributors.txt:/home/node/app/contributors.txt
             - ./authorised_names:/home/node/app/authorised_names
+            - ./logs:/home/node/app/logs
         ports:
             - 13000:13000/udp

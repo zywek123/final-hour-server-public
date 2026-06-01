@@ -260,6 +260,9 @@ export default class Event_handeler {
                         {}
                     );
                 }
+            } else {
+                // user does not exist
+                this.server.send(peer, consts.channel_misc, "login_fail", {});
             }
         },
         stats(peer, data) {
@@ -937,6 +940,32 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
             if (player.dead && player.revive_time == 30000)
                 player.on_interact(player, data.angle, data.pitch);
             if (!player.dead) {
+                const reviver = player;
+                let revived_someone = false;
+                reviver.map.playersQuadtree.each((other) => {
+                    if (
+                        !revived_someone &&
+                        other !== reviver &&
+                        other instanceof Player &&
+                        other.dead &&
+                        Math.abs(other.x - reviver.x) <= 1 &&
+                        Math.abs(other.y - reviver.y) <= 1
+                    ) {
+                        other.dead = false;
+                        other.send(consts.channel_misc, "death", { dead: false });
+                        other.set_hp(other.maxHp);
+                        other.revive_time = 60000;
+                        if (other.character) other.character.play_sound("revive", 1);
+                        reviver.game?.speak(
+                            `${other.user.username} was revived by ${reviver.user.username}`,
+                            false,
+                            "match",
+                            "death/timer_up.ogg"
+                        );
+                        revived_someone = true;
+                    }
+                });
+                if (revived_someone) return;
                 player.map.interact(player);
                 var grappler_obj = player.inventory.find_item("grappler");
                 if (

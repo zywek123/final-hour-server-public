@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs";
 import enet from "enet";
+import logger from "./logger";
 import map from "./world_map";
 import language_channel from "./language_channel";
 import str from "@supercharge/strings";
@@ -60,14 +61,14 @@ export default class Server extends EventEmitter<Server> {
         this.language_channels = {
             english: new language_channel(self, "english"),
         };
-        this.update_maps();
         this.update_contributors();
         this.update_authorised_names();
         this.update_weapons();
         this.discord = new discord(this, ignore_discord);
         this.discord.callbacks();
         this.should_tick = true;
-        this.database.initialize().then((value) => {
+        this.database.initialize().then(async (value) => {
+            await this.update_maps();
             this.system_log("Initializing server...");
             this.host = new enet.createServer(
                 {
@@ -103,24 +104,28 @@ export default class Server extends EventEmitter<Server> {
                         host.address().port
                     );
                     host.on("connect", (peer: any) => {
+                        logger.info("net", "peer connected", { address: peer.address().address });
                         peer.on("disconnect", () => {
+                            logger.info("net", "peer disconnected", { address: peer.address().address });
                             self.event_handeler.disconnect(peer);
                         });
                         peer.on("message", (packet: any, channel: number): void => {
                             if (channel < consts.CHANNEL_VOICECHAT) {
                                 let data = JSON.parse(packet.data().toString());
+                                logger.info("event", data.event, data.data ? JSON.stringify(data.data).slice(0, 120) : undefined);
                                 try {
-                                    self.event_handeler.events[data.event].bind(
+                                    const result = self.event_handeler.events[data.event].bind(
                                         self.event_handeler
                                     )(peer, data.data);
+                                    if (result instanceof Promise) result.catch((err: any) => logger.error("event", `async error in ${data.event}`, String(err)));
                                 } catch (err) {
-                                    console.log(err);
+                                    logger.error("event", `error in ${data.event}`, String(err));
                                 }
                             } else if (channel >= consts.CHANNEL_VOICECHAT) {
                                 try {
                                     self.event_handeler.events["voice_chat"].bind(self.event_handeler)(peer, packet.data());
                                 } catch(err) {
-                                    console.log(err);
+                                    logger.error("event", "error in voice_chat", String(err));
                                 }
                             }
                         });
@@ -176,7 +181,6 @@ export default class Server extends EventEmitter<Server> {
 
     async update_maps(): Promise<void> {
         const map_files = fs.readdirSync("./maps/");
-        // Looping through the files in the maps folder and adding them as maps to the maps object.
         for (let file of map_files) {
             try {
                 const map = await WorldMap.compileMapFromFile(
@@ -184,9 +188,9 @@ export default class Server extends EventEmitter<Server> {
                     `maps/${file}`
                 );
                 this.maps[map.mapName] = map;
-                console.log(map.mapName, typeof this.maps[map.mapName]);
+                logger.info("maps", `loaded ${map.mapName}`);
             } catch (err) {
-                console.log(`Error in loading ${file}: ${err}`);
+                logger.error("maps", `failed to load ${file}`, String(err));
             }
         }
     }

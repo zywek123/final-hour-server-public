@@ -229,7 +229,11 @@ export default class Zomby extends entity {
                 this.tracking.target instanceof Player &&
                 !this.tracking.target.game)
         ) {
-            this.tracking.reverse();
+            this.tracking.destroy();
+            this.tracking = undefined;
+            this.check_timer.restart();
+            await this.find_target();
+            return;
         }
         if (this.cry_timer.elapsed >= random.random_number(5639, 23000)) {
             this.cry_timer.restart();
