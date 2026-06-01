@@ -498,7 +498,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                     break;
             }
         },
-        mainmenu(peer, data) {
+        async mainmenu(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
             data = data.value;
@@ -540,7 +540,8 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                         maps_menu.send(peer);
                     } else {
                         //a map is given
-                        player.create_match(data.map);
+                        player.speak("Loading map, please wait.", true, "match");
+                        await player.create_match(data.map);
                         player.change_map(this.server.maps[data.map]);
                         player.speak(
                             "You are in exploration mode",
@@ -1207,34 +1208,26 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                     player.y,
                     player.z
                 );
-                if (door != null && !door.open) {
-                    var locked: boolean = false;
-                    if (
-                        player.points >= door.minpoints &&
-                        player.game &&
-                        player.game.started
-                    ) {
-                        locked = false;
-                        player.points = player.points - door.minpoints;
-                        player.speak(
-                            "You lost " +
-                                door.minpoints +
-                                " points in opening this door"
-                        );
-                        door.switch_state(true, false)
-                    } else if (
-                        player.points < door.minpoints &&
-                        player.game &&
-                        player.game.started
-                    ) {
-                        locked = true;
-                        player.speak(
-                            "This door is locked. You need " +
-                                door.minpoints +
-                                " points to open this door. "
-                        );
-                    } else if (!player.game || !player.game.started) {
-                        locked = false;
+                if (door != null) {
+                    if (door.open) {
+                        door.switch_state(false, true);
+                    } else if (player.game && player.game.started) {
+                        if (player.points >= door.minpoints) {
+                            player.points = player.points - door.minpoints;
+                            player.speak(
+                                "You lost " +
+                                    door.minpoints +
+                                    " points in opening this door"
+                            );
+                            door.switch_state(true, false);
+                        } else {
+                            player.speak(
+                                "This door is locked. You need " +
+                                    door.minpoints +
+                                    " points to open this door. "
+                            );
+                        }
+                    } else {
                         door.switch_state(true, false);
                     }
                 }

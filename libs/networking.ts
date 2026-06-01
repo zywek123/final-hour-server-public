@@ -149,7 +149,10 @@ export default class Server extends EventEmitter<Server> {
                                     const result = self.event_handeler.events[data.event].bind(
                                         self.event_handeler
                                     )(peer, data.data);
-                                    if (result instanceof Promise) result.catch((err: any) => logger.error("event", `async error in ${data.event}`, String(err)));
+                                    if (result instanceof Promise) result.catch((err: any) => {
+                                        logger.error("event", `async error in ${data.event}`, String(err));
+                                        self.send(peer, consts.channel_speech, "speak", { text: "An error occurred. Please try again.", interupt: true, buffer: "", sound: "" });
+                                    });
                                 } catch (err) {
                                     logger.error("event", `error in ${data.event}`, String(err));
                                 }

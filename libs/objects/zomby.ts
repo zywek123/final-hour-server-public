@@ -75,7 +75,7 @@ export default class Zomby extends entity {
         this.dead = false;
         this.attack_timer = new timer();
         this.check_timer = new timer();
-        this.movement_time = random.random_number(600, 900);
+        this.movement_time = random.random_number(300, 600);
         this.range = 1;
         this.attack_time = random.random_number(950, 2500);
         this.check_time = 13000;
