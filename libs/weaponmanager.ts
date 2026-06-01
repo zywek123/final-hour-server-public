@@ -51,6 +51,7 @@ export default class Weapon_manager {
             });
     }
     switch_weapon(num: number) {
+        if (!Number.isInteger(num) || num < 0 || num >= this.weapons.length) return;
         this.active_weapon = this.weapons[num];
     }
     fire(angle = 0, pitch = 0) {

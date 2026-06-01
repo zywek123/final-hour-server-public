@@ -104,15 +104,44 @@ export default class Server extends EventEmitter<Server> {
                         host.address().address,
                         host.address().port
                     );
+                    const peerRateMap = new Map<any, { count: number; window: number }>();
+                    const RATE_LIMIT = 120;
+                    const RATE_WINDOW_MS = 1000;
                     host.on("connect", (peer: any) => {
                         logger.info("net", "peer connected", { address: peer.address().address });
+                        peerRateMap.set(peer, { count: 0, window: Date.now() });
                         peer.on("disconnect", () => {
                             logger.info("net", "peer disconnected", { address: peer.address().address });
+                            peerRateMap.delete(peer);
                             self.event_handeler.disconnect(peer);
                         });
                         peer.on("message", (packet: any, channel: number): void => {
+                            const rate = peerRateMap.get(peer);
+                            if (rate) {
+                                const now = Date.now();
+                                if (now - rate.window > RATE_WINDOW_MS) {
+                                    rate.count = 0;
+                                    rate.window = now;
+                                }
+                                rate.count++;
+                                if (rate.count > RATE_LIMIT) {
+                                    logger.error("net", "rate limit exceeded", { address: peer.address().address });
+                                    peer.disconnectNow(0);
+                                    return;
+                                }
+                            }
                             if (channel < consts.CHANNEL_VOICECHAT) {
-                                let data = JSON.parse(packet.data().toString());
+                                let data: any;
+                                try {
+                                    data = JSON.parse(packet.data().toString());
+                                } catch {
+                                    logger.error("event", "malformed packet", undefined);
+                                    return;
+                                }
+                                if (!data.event || !self.event_handeler.events[data.event]) {
+                                    logger.error("event", `unknown event: ${data.event}`, undefined);
+                                    return;
+                                }
                                 const log_data = data.data ? { ...data.data } : undefined;
                                 if (log_data && log_data.password !== undefined) log_data.password = "***";
                                 logger.info("event", data.event, log_data ? JSON.stringify(log_data).slice(0, 120) : undefined);

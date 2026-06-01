@@ -59,9 +59,32 @@ export default class Event_handeler {
             player.destroy();
         }
     }
+    private static readonly USERNAME_RE = /^[a-zA-Z0-9_\-]{3,32}$/;
+    private static readonly MIN_PASSWORD_LEN = 6;
+
+    private validate_username(peer: any, data: any): boolean {
+        const username: string = typeof data?.username === "string" ? data.username : "";
+        if (!Event_handeler.USERNAME_RE.test(username)) {
+            this.server.send(peer, consts.channel_misc, "login_failed", { message: "Invalid username." });
+            return false;
+        }
+        return true;
+    }
+
+    private validate_credentials(peer: any, data: any): boolean {
+        if (!this.validate_username(peer, data)) return false;
+        const password: string = typeof data?.password === "string" ? data.password : "";
+        if (password.length < Event_handeler.MIN_PASSWORD_LEN) {
+            this.server.send(peer, consts.channel_misc, "login_failed", { message: "Password too short." });
+            return false;
+        }
+        return true;
+    }
+
     events: Record<string, EventCallback> = {
         async create(peer, data) {
             var server = this.server;
+            if (!this.validate_credentials(peer, data)) return;
             const normalized_username = data["username"].toLowerCase();
             const ban = await this.server.database.IPBans.findOne({
                 where: { IP: peer.address().address }
@@ -118,6 +141,7 @@ export default class Event_handeler {
         },
         async login(peer, data) {
             var server = this.server;
+            if (!this.validate_username(peer, data)) return;
             if (server.updating) {
                 server.send(peer, consts.channel_misc, "login_failed", {
                     message: "the server is updating",
@@ -643,17 +667,9 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         move(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
-            if (player) {
-                player.move(
-                    data["x"],
-                    data["y"],
-                    data["z"],
-                    data["play_sound"],
-                    data["mode"],
-                    true,
-                    data["angle"]
-                );
-            }
+            const x = data["x"], y = data["y"], z = data["z"];
+            if (!player.map.in_bound(x, y, z)) return;
+            player.move(x, y, z, data["play_sound"], data["mode"], true, data["angle"]);
         },
         change_map(peer, data) {
             const player = this.server.get_by_peer(peer);
@@ -882,9 +898,9 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
             );
         },
         set_hp(peer, data) {
-            var amount = to_num(data["amount"]);
             var player = this.server.get_by_peer(peer);
-            if (!player) return;
+            if (!player || !player.builder) return;
+            var amount = to_num(data["amount"]);
             player.set_hp(amount);
         },
         async send_reply(peer, data) {
@@ -1257,8 +1273,10 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         },
         weapon_fire(peer, data) {
             var player = this.server.get_by_peer(peer);
-            if (!player) return;
-            player.weapon_manager.fire(data.angle, data.pitch);
+            if (!player || !player.game) return;
+            const angle = data.angle, pitch = data.pitch;
+            if (!Number.isFinite(angle) || !Number.isFinite(pitch)) return;
+            player.weapon_manager.fire(angle, pitch);
         },
         weapon_reload(peer, data) {
             var player = this.server.get_by_peer(peer);
