@@ -61,6 +61,10 @@ export default class User extends Model<
     @Default(false)
     @NotNull
     declare permban: CreationOptional<boolean>;
+    @Attribute(DataTypes.BIGINT)
+    @Default(0)
+    @NotNull
+    declare tempbanExpiry: CreationOptional<number>;
     @Attribute(DataTypes.BOOLEAN)
     @Default(false)
     @NotNull

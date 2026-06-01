@@ -176,6 +176,25 @@ export default class Event_handeler {
                 let result = await bcrypt.compare(data.password, user.password);
                 if (result) {
                     //password match.
+                    if (user.tempbanExpiry && user.tempbanExpiry > Date.now()) {
+                        this.server.send(peer, consts.channel_misc, "ban", {
+                            message: `This account has been temporarily banned until ${new Date(user.tempbanExpiry).toString()}.\r\nReason: ${user.banReason}`
+                        });
+                        const currentIP = peer.address().address;
+                        const existingIPBan = await this.server.database.IPBans.findOne({ where: { IP: currentIP } });
+                        if (!existingIPBan) {
+                            const ipBan = await this.server.database.IPBans.create({
+                                IP: currentIP,
+                                permban: false,
+                                tempban: true,
+                                expiryDate: user.tempbanExpiry,
+                                reason: user.banReason as string,
+                            });
+                            user.IPBans = (user.IPBans ?? []).concat([ipBan.IP]);
+                            await user.save();
+                        }
+                        return;
+                    }
                     if (user.permban) {
                         this.server.send(peer, consts.channel_misc, "ban", {
                             message: `This user has been banned.\r\nReason: ${user.banReason}`
@@ -248,6 +267,11 @@ export default class Event_handeler {
                         }
                         player.user.off_msg_queue = [];
                         player.user.save();
+                    }
+                    const loginIP = peer.address().address;
+                    if (!user.IPList.includes(loginIP)) {
+                        user.IPList = user.IPList.concat([loginIP]);
+                        user.save();
                     }
                     player.user.log({
                         eventType: "login",
@@ -355,51 +379,49 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         async chat(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
-            if (player) {
-                var message = data.message.trim();
-                if (message.startsWith("/")) {
-                    //the message is a slash command.
-                    try {
-                        await this.handel_command(player, message);
-                    } catch (err) {
-                        player.speak("Error");
-                        if (err instanceof Error && player.contributor)
-                            player.speak(err.toString());
-                        console.log(err);
-                    }
-                    return;
+            if (typeof data.message !== "string") return;
+            var message = data.message.trim();
+            if (message.startsWith("/")) {
+                try {
+                    await this.handel_command(player, message);
+                } catch (err) {
+                    player.speak("Error");
+                    if (err instanceof Error && player.contributor)
+                        player.speak(err.toString());
+                    console.log(err);
                 }
-                player.chat(data.message);
+                return;
             }
+            if (message.length > 2000) return;
+            player.chat(data.message);
         },
         async map_chat(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player || player && player.user.muted) return;
-            if (player) {
-                var message = data["message"].trim();
-                if (message.startsWith("/")) {
-                    //the message is a slash command.
-                    try {
-                        await this.handel_command(player, message);
-                    } catch (err) {
-                        player.speak("Error");
-                        if (err instanceof Error && player.contributor)
-                            player.speak(err.toString());
-                        console.log(err);
-                    }
-                    return;
+            if (typeof data["message"] !== "string") return;
+            var message = data["message"].trim();
+            if (message.startsWith("/")) {
+                try {
+                    await this.handel_command(player, message);
+                } catch (err) {
+                    player.speak("Error");
+                    if (err instanceof Error && player.contributor)
+                        player.speak(err.toString());
+                    console.log(err);
                 }
-                player.map.playersQuadtree.each((i) => {
-                    if (player instanceof Player && player.user.block_list.includes(i.user.username)) return;
-                    else i.speak(
-                        `map - ${player?.name}: ${message}`,
-                        true,
-                        "map chat"
-                    );
-                    if (i != player) i.play_sound("ui/mapchat.ogg", false, 50);
-                });
-                player.user.log_chat("map_chat", message);
+                return;
             }
+            if (message.length > 2000) return;
+            player.map.playersQuadtree.each((i) => {
+                if (player instanceof Player && player.user.block_list.includes(i.user.username)) return;
+                else i.speak(
+                    `map - ${player?.name}: ${message}`,
+                    true,
+                    "map chat"
+                );
+                if (i != player) i.play_sound("ui/mapchat.ogg", false, 50);
+            });
+            player.user.log_chat("map_chat", message);
         },
         ping(peer, data) {
             this.server.send(peer, consts.channel_ping, "ping", {});
@@ -709,6 +731,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
             var player = this.server.get_by_peer(peer);
             if (!player) return;
             data = data.value;
+            if (!data || typeof data.action !== "string") return;
             var donate_menu = new menu(
                 this.server,
                 `Which item would you like to give to ${data.action}`,
@@ -741,6 +764,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
             var target = this.server.get_by_username(data.data.target);
             if (!target) return;
             var itemname = data.data.itemname;
+            if (typeof data.value !== "string") return;
             var amount = to_num(data.value.trim());
             var item = player.inventory.find_item(itemname);
             if (item == null) {
@@ -907,6 +931,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         async send_reply(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
+            if (!Array.isArray(data["value"]) || data["value"].length < 2) return;
             var target = this.server.get_by_username(data["value"][0]);
             if (target) {
                 player.send_pm(target, data["value"][1]);
@@ -1236,7 +1261,9 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         player_radar(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
-            var in_radius = player.players_in_radius(data["radius"]);
+            const radius = data["radius"];
+            if (!Number.isFinite(radius) || radius <= 0) return;
+            var in_radius = player.players_in_radius(radius);
             var message = "";
             if (in_radius.length > 0) {
                 for (let i in in_radius) {
@@ -1262,6 +1289,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         draw_weapon(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
+            if (!Number.isInteger(data.num)) return;
             player.weapon_manager.switch_weapon(data.num);
         },
         weapon_fire(peer, data) {
@@ -1279,8 +1307,12 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         async submit_ticket(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
+            if (typeof data["message"] !== "string") return;
             var message = data["message"].trim();
+            if (message.length === 0 || message.length > 2000) return;
+            const VALID_CATEGORIES = ["feedback", "report", "bug", "building"];
             const category = data["category"];
+            if (!VALID_CATEGORIES.includes(category)) return;
 
             const ticket_return = await this.server.database.tickets.create({
                 user_id: player.user.id,
@@ -1326,24 +1358,21 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
             var player = this.server.get_by_peer(peer);
             if (!player) return;
             const ticket = data["ticket"];
+            if (!ticket || !Number.isInteger(ticket["id"])) return;
+            var ticket_db = await this.server.database.tickets.get_ticket_by_id(ticket["id"]);
+            if (!ticket_db) return;
             if (
-                (player.user.username.toLowerCase() ==
-                    ticket["author"].toLowerCase() &&
-                    ticket["status"] != "closed") ||
+                (player.user.username.toLowerCase() == ticket_db.author.toLowerCase() &&
+                    ticket_db.status != "closed") ||
                 player.moderator
             ) {
                 player.speak("Edited ticket");
                 player.user.log({
                     eventType: "ticket_edit",
                     eventData: {
-                        id: ticket["id"],
+                        id: ticket_db.ticket_id,
                     },
                 });
-                var ticket_db =
-                    await this.server.database.tickets.get_ticket_by_id(
-                        ticket["id"]
-                    );
-                ticket_db.author = ticket.author;
                 ticket_db.status = ticket.status;
                 ticket_db.category = ticket.category;
                 ticket_db.message_list = ticket.message_list;
@@ -1353,17 +1382,17 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                 this.server.speakmods(
                     player.user.username +
                         " just edit the ticket with the id " +
-                        ticket["id"] +
+                        ticket_db.ticket_id +
                         " originally created by " +
-                        ticket["author"],
+                        ticket_db.author,
                     true,
                     "staff",
                     "ui/notify2.ogg"
                 );
                 this.server.offline_speak(
-                    ticket["author"],
+                    ticket_db.author,
                     "Your ticket with ticket id: " +
-                        ticket["id"] +
+                        ticket_db.ticket_id +
                         " has been editted",
                     false,
                     "staff alerts",
@@ -1377,12 +1406,15 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
             var player = this.server.get_by_peer(peer);
             if (!player) return;
             const id = data["id"];
-            var message = data["message"];
+            if (typeof data["message"] !== "string") return;
+            var message = data["message"].trim();
+            if (message.length === 0 || message.length > 2000) return;
             var ticket = await this.server.database.tickets.get_ticket_by_id(
                 to_num(id)
             );
+            if (!ticket) return;
 
-            if (data["status"] == "closed") {
+            if (ticket.status === "closed") {
                 player.speak("This ticket is closed");
             } else {
                 if (player.moderator) message = "moderator: " + message;
@@ -1482,10 +1514,12 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
         get_game_coords(peer, data) {
             var player = this.server.get_by_peer(peer);
             if (!player) return;
+            const playerIndex = data["player"];
+            if (!Number.isInteger(playerIndex) || playerIndex <= 0) return;
             if (player.game) {
-                if (player.game.players.size >= data["player"]) {
+                if (player.game.players.size >= playerIndex) {
                     var target = Array.from(player.game.players)[
-                        data["player"] - 1
+                        playerIndex - 1
                     ];
                     var status = "";
                     if (target.hp <= 20 && !target.dead) {
@@ -2645,12 +2679,16 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                         }
                     }
                     break;
-                case "tempban":
+                case "tempban": {
                     if (!player.moderator) break;
-                    var target = this.server.get_by_username(commandParts[1])
+                    const target_online = this.server.get_by_username(commandParts[1]);
+                    const target_user = target_online
+                        ? target_online.user
+                        : await this.server.database.users.get_by_username(commandParts[1]);
+                    if (!target_user) { player.speak("Player not found"); break; }
                     var month = 0;
                     var day = 1;
-                    var year = 2026
+                    var year = 2026;
                     var hour = 0;
                     var minute = 0;
                     var second = 0;
@@ -2661,22 +2699,31 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                     if (date_string[3]) hour = to_num(date_string[3]);
                     if (date_string[4]) minute = to_num(date_string[4]);
                     if (date_string[5]) second = to_num(date_string[5]);
-                    var ban = await this.server.database.IPBans.create({
-                        IP: target?.peer.address().address,
-                        permban: false,
-                        tempban: true,
-                        expiryDate: Date.UTC(year, month, day, hour, minute, second),
-                        reason: commandParts.slice(3).join(" ")
-                    });
-                    message = `${target?.user.username} has been banned until ${new Date(ban.expiryDate).toDateString()} for ${ban.reason}.`;
+                    const banExpiry = Date.UTC(year, month, day, hour, minute, second);
+                    const banReason = commandParts.slice(3).join(" ");
+                    target_user.tempbanExpiry = banExpiry;
+                    target_user.banReason = banReason;
+                    await target_user.save();
+                    if (target_online) {
+                        const currentIP = target_online.peer.address().address;
+                        const existingIPBan = await this.server.database.IPBans.findOne({ where: { IP: currentIP } });
+                        if (!existingIPBan) {
+                            const ipBan = await this.server.database.IPBans.create({
+                                IP: currentIP, permban: false, tempban: true,
+                                expiryDate: banExpiry, reason: banReason,
+                            });
+                            target_user.IPBans = (target_user.IPBans ?? []).concat([ipBan.IP]);
+                            await target_user.save();
+                        }
+                        target_online.send(consts.channel_misc, "quit", {
+                            message: `You have been banned until ${new Date(banExpiry).toString()}. For ${banReason}`
+                        });
+                    }
+                    message = `${target_user.username} has been banned until ${new Date(banExpiry).toDateString()} for ${banReason}.`;
                     this.server.speak(message, false, "notifications", "ui/notify1.ogg");
-                    this.server.speakmods(`${player.user.username} has banned ${target?.user.username} for ${ban.reason}, until ${new Date(ban.expiryDate).toString()}`, true, "staff", "ui/notify2.ogg");
-                    target?.send(consts.channel_misc, "quit", {
-                        message: `You have been banned until ${new Date(ban.expiryDate).toString()}. For ${ban.reason}`
-                    });
-                    if (target && target.user.IPBans) target.user.IPBans = target?.user.IPBans.concat([ban.IP]);
-                    await target?.user.save()
+                    this.server.speakmods(`${player.user.username} has banned ${target_user.username} for ${banReason}, until ${new Date(banExpiry).toString()}`, true, "staff", "ui/notify2.ogg");
                     break;
+                }
             case "mute":
                 var target = this.server.get_by_username(commandParts[1]);
                 if (target && !target.user.muted && player.moderator) {
