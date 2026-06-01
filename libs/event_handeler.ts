@@ -63,20 +63,20 @@ export default class Event_handeler {
     private static readonly USERNAME_RE = /^[a-zA-Z0-9_\-]{3,32}$/;
     private static readonly MIN_PASSWORD_LEN = 6;
 
-    private validate_username(peer: any, data: any): boolean {
+    private validate_username(peer: any, data: any, fail_event = "login_failed"): boolean {
         const username: string = typeof data?.username === "string" ? data.username : "";
         if (!Event_handeler.USERNAME_RE.test(username)) {
-            this.server.send(peer, consts.channel_misc, "login_failed", { message: "Invalid username." });
+            this.server.send(peer, consts.channel_misc, fail_event, { message: "Invalid username. Use 3-32 characters: letters, digits, _ or -" });
             return false;
         }
         return true;
     }
 
-    private validate_credentials(peer: any, data: any): boolean {
-        if (!this.validate_username(peer, data)) return false;
+    private validate_credentials(peer: any, data: any, fail_event = "login_failed"): boolean {
+        if (!this.validate_username(peer, data, fail_event)) return false;
         const password: string = typeof data?.password === "string" ? data.password : "";
         if (password.length < Event_handeler.MIN_PASSWORD_LEN) {
-            this.server.send(peer, consts.channel_misc, "login_failed", { message: "Password too short." });
+            this.server.send(peer, consts.channel_misc, fail_event, { message: `Password must be at least ${Event_handeler.MIN_PASSWORD_LEN} characters.` });
             return false;
         }
         return true;
@@ -85,7 +85,7 @@ export default class Event_handeler {
     events: Record<string, EventCallback> = {
         async create(peer, data) {
             var server = this.server;
-            if (!this.validate_credentials(peer, data)) return;
+            if (!this.validate_credentials(peer, data, "create_failed")) return;
             const normalized_username = data["username"].toLowerCase();
             const ban = await this.server.database.IPBans.findOne({
                 where: { IP: peer.address().address }
@@ -118,8 +118,8 @@ export default class Event_handeler {
                 return server.send(
                     peer,
                     consts.channel_misc,
-                    "create_fail",
-                    {}
+                    "create_failed",
+                    { message: "This username is already taken." }
                 );
             } else {
                 let password = await bcrypt.hash(
@@ -926,6 +926,11 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
             if (!player || !player.builder) return;
             var amount = to_num(data["amount"]);
             player.set_hp(amount);
+        },
+        drown(peer, data) {
+            var player = this.server.get_by_peer(peer);
+            if (!player || player.dead) return;
+            player.set_hp(player.hp - 5);
         },
         async send_reply(peer, data) {
             var player = this.server.get_by_peer(peer);
