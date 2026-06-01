@@ -5,6 +5,7 @@ const LOG_DIR = "./logs";
 const LOG_FILE = path.join(LOG_DIR, "server.log");
 
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+fs.writeFileSync(LOG_FILE, "");
 
 function timestamp(): string {
     return new Date().toISOString();

@@ -68,6 +68,7 @@ export default class Server extends EventEmitter<Server> {
         this.discord.callbacks();
         this.should_tick = true;
         this.database.initialize().then(async (value) => {
+            this.log_startup_diagnostics();
             await this.update_maps();
             this.system_log("Initializing server...");
             this.host = new enet.createServer(
@@ -112,7 +113,9 @@ export default class Server extends EventEmitter<Server> {
                         peer.on("message", (packet: any, channel: number): void => {
                             if (channel < consts.CHANNEL_VOICECHAT) {
                                 let data = JSON.parse(packet.data().toString());
-                                logger.info("event", data.event, data.data ? JSON.stringify(data.data).slice(0, 120) : undefined);
+                                const log_data = data.data ? { ...data.data } : undefined;
+                                if (log_data && log_data.password !== undefined) log_data.password = "***";
+                                logger.info("event", data.event, log_data ? JSON.stringify(log_data).slice(0, 120) : undefined);
                                 try {
                                     const result = self.event_handeler.events[data.event].bind(
                                         self.event_handeler
@@ -177,6 +180,25 @@ export default class Server extends EventEmitter<Server> {
             .map((value) => {
                 return value.trim();
             });
+    }
+
+    log_startup_diagnostics(): void {
+        const checks: { label: string; path: string }[] = [
+            { label: "database",       path: "./database.sqlite3" },
+            { label: "contributors",   path: "./contributors.txt" },
+            { label: "authorised_names", path: "./authorised_names" },
+            { label: "sm.txt",         path: "./sm.txt" },
+        ];
+        for (const { label, path: p } of checks) {
+            if (fs.existsSync(p)) logger.info("startup", `${label} found`);
+            else logger.warn("startup", `${label} not found`, p);
+        }
+        if (fs.existsSync("./maps")) {
+            const maps = fs.readdirSync("./maps").filter(f => f.endsWith(".map"));
+            logger.info("startup", `maps folder found`, { count: maps.length, files: maps });
+        } else {
+            logger.warn("startup", "maps folder not found");
+        }
     }
 
     async update_maps(): Promise<void> {
