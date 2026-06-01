@@ -11,7 +11,7 @@ function timestamp(): string {
 }
 
 function write(level: string, category: string, message: string, data?: any): void {
-    const line = `[${timestamp()}] [${level}] [${category}] ${message}${data !== undefined ? " " + JSON.stringify(data) : ""}\n`;
+    const line = `[${level}] [${category}] ${message}${data !== undefined ? " " + JSON.stringify(data) : ""} [${timestamp()}]\n`;
     process.stdout.write(line);
     fs.appendFileSync(LOG_FILE, line);
 }

@@ -1,5 +1,6 @@
 import * as movement from "../movement";
 import * as random from "../random";
+import logger from "../logger";
 import tracker, { Point } from "../tracker";
 import timer from "../timer";
 import entity from "./entity";
@@ -215,6 +216,7 @@ export default class Zomby extends entity {
                     this.tracking.at_end()))
         ) {
             var location = this.map.get_zomby_spawn();
+            logger.info("zombie", `${this.name} idle teleport to spawn`, { x: location.x, y: location.y });
             this.move(location.x, location.y, location.z, false);
         }
         if (this.tracking && this.attack_timer.elapsed >= this.attack_time) {
@@ -229,6 +231,7 @@ export default class Zomby extends entity {
                 this.tracking.target instanceof Player &&
                 !this.tracking.target.game)
         ) {
+            logger.info("zombie", `${this.name} target lost, seeking new`, { target: this.tracking.target.name });
             this.tracking.destroy();
             this.tracking = undefined;
             this.check_timer.restart();
@@ -247,6 +250,7 @@ export default class Zomby extends entity {
                 Math.abs(this.x - this.stuck_last_x) < 1 &&
                 Math.abs(this.y - this.stuck_last_y) < 1
             ) {
+                logger.warn("zombie", `${this.name} stuck, re-pathing`, { x: this.x, y: this.y, target: this.tracking.target.name });
                 this.tracking.destroy();
                 this.tracking = undefined;
                 this.check_timer.restart();
@@ -342,13 +346,15 @@ export default class Zomby extends entity {
                         if (this.tracking) this.tracking.destroy();
                         this.tracking = new tracker(this.server, this, i, path);
                         this.idel_timer.restart();
+                        logger.info("zombie", `${this.name} tracking ${i.name}`, { steps: path.length });
                         return;
                     }
                 } catch (err) {
-                    console.log(err);
+                    logger.error("zombie", `${this.name} pathfind error`, String(err));
                     continue;
                 }
         }
+        logger.warn("zombie", `${this.name} no reachable target found`, { x: this.x, y: this.y });
     }
     destroy(random_powerup = true): void {
         super.destroy();
