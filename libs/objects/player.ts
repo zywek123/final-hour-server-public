@@ -430,8 +430,10 @@ export default class Player extends entity {
         }
         m.send(this.peer);
     }
+    private _creatingGame = false;
     async create_match(mapname: string): Promise<zomby_game> {
-        if (!this.game) {
+        if (!this.game && !this._creatingGame) {
+            this._creatingGame = true;
             var game_map = await WorldMap.compileMapFromFile(
                 this.server,
                 `maps/${mapname}.map`
@@ -447,6 +449,7 @@ export default class Player extends entity {
                 false,
                 "main"
             );
+            this._creatingGame = false;
             this.user.log({
                 eventType: "match_create",
                 eventData: {

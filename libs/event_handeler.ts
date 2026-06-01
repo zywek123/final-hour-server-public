@@ -40,6 +40,7 @@ type EventCallback = (
 
 export default class Event_handeler {
     server: Server;
+    private pendingLogins = new Set<string>();
     constructor(server: Server) {
         this.server = server;
     }
@@ -155,17 +156,12 @@ export default class Event_handeler {
                 //});
                 //return;
             //}
-            if (this.server.get_by_username(data["username"])) {
-                //user already logged in.
-                return this.server.send(
-                    peer,
-                    consts.channel_misc,
-                    "login_failed",
-                    {
-                        message: "user already logged in",
-                    }
-                );
+            const loginKey = data["username"].toLowerCase();
+            if (this.server.get_by_username(data["username"]) || this.pendingLogins.has(loginKey)) {
+                return this.server.send(peer, consts.channel_misc, "login_failed", { message: "user already logged in" });
             }
+            this.pendingLogins.add(loginKey);
+            try {
             let exists = await this.server.database.users.username_exists(
                 data.username
             );
@@ -266,12 +262,12 @@ export default class Event_handeler {
                             player.speak(i[0], i[1], i[2], i[3]);
                         }
                         player.user.off_msg_queue = [];
-                        player.user.save();
+                        await player.user.save();
                     }
                     const loginIP = peer.address().address;
                     if (!user.IPList.includes(loginIP)) {
                         user.IPList = user.IPList.concat([loginIP]);
-                        user.save();
+                        await user.save();
                     }
                     player.user.log({
                         eventType: "login",
@@ -311,6 +307,9 @@ export default class Event_handeler {
             } else {
                 // user does not exist
                 this.server.send(peer, consts.channel_misc, "login_fail", {});
+            }
+            } finally {
+                this.pendingLogins.delete(loginKey);
             }
         },
         stats(peer, data) {
@@ -1376,7 +1375,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                 ticket_db.status = ticket.status;
                 ticket_db.category = ticket.category;
                 ticket_db.message_list = ticket.message_list;
-                ticket_db.save();
+                await ticket_db.save();
                 let discord_message_id = ticket_db.discord_message_id;
                 this.server.discord.edit_ticket(discord_message_id, ticket_db);
                 this.server.speakmods(
@@ -1506,10 +1505,10 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                             "ui/notify2.ogg"
                         );
                 }
-                ticket.save();
+                await ticket.save();
                 player.speak("sent message");
             }
-            ticket.save();
+            await ticket.save();
         },
         get_game_coords(peer, data) {
             var player = this.server.get_by_peer(peer);
@@ -1745,7 +1744,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                             default:
                                 return;
                         }
-                        target.save();
+                        await target.save();
                     } else if (target && !value) {
                         switch (priv) {
                             case "moderator":
@@ -1813,7 +1812,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                             default:
                                 return;
                         }
-                        target.save();
+                        await target.save();
                     }
                 }
                 break;
@@ -2540,8 +2539,8 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                     ) {
                         target_user.block_list = target_user.block_list.concat([player.user.username]);
                         player.user.blocked_players = player.user.blocked_players.concat([target_name]);
-                        target_user.save()
-                        player.user.save();
+                        await target_user.save();
+                        await player.user.save();
                         player.speak(`You have blocked ${target_user.username}.`);
                     }
                 } else {
@@ -2818,7 +2817,7 @@ player.map.send(player.voice_channel, "n/a", data, exclude);
                         false,
                         "notifications"
                     );
-                    player.save();
+                    await player.save();
                 } else {
                     player.speak("invalid length");
                 }
